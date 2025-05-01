@@ -87,7 +87,6 @@ function App() {
           ))}
         </ul>
 
-        
         <button onClick={handleDeleteCompleted} style={{ marginTop: '1rem' }}>🗑️ Delete Completed Tasks </button>
 
       </>
