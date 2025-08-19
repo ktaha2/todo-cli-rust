@@ -1,140 +1,44 @@
-use actix_web::{get, post, put, delete, web, App, HttpServer, HttpResponse, Responder};
-use serde::{Deserialize, Serialize};
+mod handlers;
 
-use sqlx::{postgres::PgPoolOptions};
-use std::env;
-use dotenv::dotenv;
-use uuid::Uuid;
+use actix_web::{web, App, HttpServer, middleware::Logger};
 use actix_cors::Cors;
-use serde_json::json;
+use sqlx::postgres::PgPoolOptions;
+use dotenv::dotenv;
 
-
-#[derive(Serialize)]
-struct Task {
-    id: Uuid,
-    title: String,
-    completed: bool,
-}
-
-
-#[derive(Deserialize)]
-struct NewTask {
-    title: String,
-}
-
-#[get("/")]
-async fn health_check() -> impl Responder {
-    HttpResponse::Ok().body("✅ RustyTasks API is running")
-}
-
-#[get("/tasks")]
-async fn get_tasks(db: web::Data<sqlx::PgPool>) -> impl Responder {
-    let rows = sqlx::query!("SELECT id, title, completed FROM tasks")
-        .fetch_all(db.get_ref())
-        .await;
-
-    match rows {
-        Ok(rows) => {
-            let tasks: Vec<Task> = rows.into_iter().map(|row| Task {
-                id: row.id,
-                title: row.title,
-                completed: row.completed,
-            }).collect();
-
-            HttpResponse::Ok().json(tasks)
-        }
-        Err(_) => HttpResponse::InternalServerError().finish(),
-    }
-}
-
-#[post("/tasks")]
-async fn add_task(
-    db: web::Data<sqlx::PgPool>,
-    form: web::Json<NewTask>,
-) -> impl Responder {
-    let new_id = Uuid::new_v4();
-    let result = sqlx::query!(
-        "INSERT INTO tasks (id, title, completed) VALUES ($1, $2, $3)",
-        new_id,
-        form.title,
-        false
-    )
-    .execute(db.get_ref())
-    .await;
-
-    match result {
-        Ok(_) => HttpResponse::Created().json(json!({ "status": "success" })),
-        Err(_) => HttpResponse::InternalServerError().finish(),
-    }
-}
-
-
-#[put("/tasks/{id}/complete")]
-async fn complete_task(
-    db: web::Data<sqlx::PgPool>,
-    path: web::Path<Uuid>
-) -> impl Responder {
-    let id = path.into_inner(); // ✅ this extracts the UUID
-    let result = sqlx::query!(
-        "UPDATE tasks SET completed = NOT completed WHERE id = $1",
-        id
-    )
-    .execute(db.get_ref())
-    .await;
-
-    match result {
-        Ok(_) => HttpResponse::Ok().json(json!({ "status": "success" })),
-        Err(_) => HttpResponse::InternalServerError().finish(),
-    }
-}
-
-#[delete("/tasks/completed")]
-async fn delete_completed_tasks(
-    db: web::Data<sqlx::PgPool>,
-) -> impl Responder {
-    let result = sqlx::query!(
-        "DELETE FROM tasks WHERE completed = true"
-    )
-    .execute(db.get_ref())
-    .await;
-
-    match result {
-        Ok(r) => HttpResponse::Ok().json(json!({
-            "status": "deleted",
-            "count": r.rows_affected()
-        })),
-        Err(_) => HttpResponse::InternalServerError().finish(),
-    }
-}
-
-
-
+use rusty_tasks_api::{config::Config, database::TaskService};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    // Initialize environment variables
     dotenv().ok();
-    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    
+    // Initialize logging
+    env_logger::init();
 
+    // Load configuration
+    let config = Config::from_env().expect("Failed to load configuration");
+
+    // Connect to database
     let pool = PgPoolOptions::new()
         .max_connections(5)
-        .connect(&database_url)
+        .connect(&config.database_url)
         .await
         .expect("❌ Failed to connect to the database");
 
-    println!("🚀 Starting server at http://localhost:8080");
+    // Create task service
+    let task_service = TaskService::new(pool);
 
+    println!("🚀 Starting server at http://{}:{}", config.server_host, config.server_port);
+
+    // Start HTTP server
     HttpServer::new(move || {
         App::new()
-            .wrap(Cors::permissive()) // ← this allows all origins during dev
-            .app_data(web::Data::new(pool.clone()))
-            .service(health_check)
-            .service(get_tasks)
-            .service(add_task)
-            .service(complete_task)
-            .service(delete_completed_tasks)
-
+            .wrap(Logger::default())
+            .wrap(Cors::permissive()) // Allow all origins during development
+            .app_data(web::Data::new(task_service.clone()))
+            .configure(handlers::configure_routes)
     })
-    .bind(("127.0.0.1", 8080))?
+    .bind((config.server_host.as_str(), config.server_port))?
     .run()
     .await
 }
