@@ -1,0 +1,30 @@
+.error-message {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: #fee;
+  border: 1px solid #fcc;
+  color: #c33;
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+  border-radius: 4px;
+}
+
+.error-text {
+  flex-grow: 1;
+}
+
+.error-dismiss-btn {
+  background: none;
+  border: none;
+  color: #c33;
+  cursor: pointer;
+  font-size: 1.2em;
+  margin-left: 1rem;
+  padding: 0;
+  line-height: 1;
+}
+
+.error-dismiss-btn:hover {
+  color: #a11;
+}

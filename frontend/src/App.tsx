@@ -1,97 +1,53 @@
-import React, { useEffect, useState } from 'react';
-import { Task } from './types';
+import React from 'react';
+import { useTasks } from './hooks/useTasks';
+import TaskInput from './components/TaskInput';
+import TaskList from './components/TaskList';
+import LoadingSpinner from './components/LoadingSpinner';
+import ErrorMessage from './components/ErrorMessage';
+import './App.css';
 
 function App() {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [newTitle, setNewTitle] = useState('');
-
-
-  useEffect(() => {
-    fetch('http://localhost:8080/tasks')
-      .then((res) => res.json())
-      .then((data) => setTasks(data))
-      .catch((err) => console.error('Failed to fetch tasks:', err));
-  }, []);
-
-  const handleAddTask = () => {
-    if (!newTitle.trim()) return;
-  
-    fetch('http://localhost:8080/tasks', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ title: newTitle }),
-    })
-      .then(() => {
-        setNewTitle('');
-        return fetch('http://localhost:8080/tasks');
-      })
-      .then((res) => res.json())
-      .then((data) => setTasks(data))
-      .catch((err) => console.error('Error adding task:', err));
-  };
-
-  const handleToggleComplete = (id: string) => {
-    fetch(`http://localhost:8080/tasks/${id}/complete`, {
-      method: 'PUT',
-    })
-      .then(() => fetch('http://localhost:8080/tasks'))
-      .then((res) => res.json())
-      .then((data) => setTasks(data))
-      .catch((err) => console.error('Failed to toggle task completion:', err));
-  };
-
-  const handleDeleteCompleted = () => {
-    fetch('http://localhost:8080/tasks/completed', {
-      method: 'DELETE',
-    })
-      .then(() => fetch('http://localhost:8080/tasks'))
-      .then((res) => res.json())
-      .then((data) => setTasks(data))
-      .catch((err) => console.error('Failed to delete completed tasks:', err));
-  };
-  
+  const {
+    tasks,
+    isLoading,
+    error,
+    addTask,
+    toggleTask,
+    deleteCompletedTasks,
+    clearError
+  } = useTasks();
 
   return (
-    <div style={{ padding: '2rem' }}>
-      <h1>🦀 RustyTasks</h1>
+    <div className="app">
+      <header className="app-header">
+        <h1>🦀 RustyTasks</h1>
+        <p>A modern task manager built with Rust and React</p>
+      </header>
 
-      <input
-        type="text"
-        value={newTitle}
-        onChange={(e) => setNewTitle(e.target.value)}
-        placeholder="New task title"
-        style={{ marginRight: '1rem' }}
-      />
-      <button onClick={handleAddTask}>Add Task</button>
+      <main className="app-main">
+        {error && (
+          <ErrorMessage 
+            message={error} 
+            onDismiss={clearError}
+          />
+        )}
 
-      <h2 style={{ marginTop: '2rem' }}>Tasks</h2>
+        <TaskInput 
+          onAddTask={addTask}
+          isDisabled={isLoading}
+        />
 
-      {tasks.length === 0 ? (
-        <p>No tasks found.</p>
-      ) : (
-<>  
-      
-        <ul>
-          {tasks.map((task) => (
-            <li key={task.id}>
-              <input
-                  type="checkbox"
-                  checked={task.completed}
-                  onChange={() => handleToggleComplete(task.id)}
-                />
-
-              {task.title}
-            </li>
-          ))}
-        </ul>
-
-        <button onClick={handleDeleteCompleted} style={{ marginTop: '1rem' }}>🗑️ Delete Completed Tasks </button>
-
-      </>
-      )}
-      
+        {isLoading ? (
+          <LoadingSpinner />
+        ) : (
+          <TaskList
+            tasks={tasks}
+            onToggleTask={toggleTask}
+            onDeleteCompleted={deleteCompletedTasks}
+            isDisabled={isLoading}
+          />
+        )}
+      </main>
     </div>
   );
 }
